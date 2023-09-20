@@ -1,23 +1,27 @@
 import cv2
 import time
 import numpy as np
-import onnxruntime 
+import onnxruntime
+
 
 # sigmoid函数
 def sigmoid(x):
     return 1. / (1 + np.exp(-x))
 
+
 # tanh函数
 def tanh(x):
     return 2. / (1 + np.exp(-2 * x)) - 1
 
+
 # 数据预处理
 def preprocess(src_img, size):
-    output = cv2.resize(src_img,(size[0], size[1]),interpolation=cv2.INTER_AREA)
-    output = output.transpose(2,0,1)
+    output = cv2.resize(src_img, (size[0], size[1]), interpolation=cv2.INTER_AREA)
+    output = output.transpose(2, 0, 1)
     output = output.reshape((1, 3, size[1], size[0])) / 255
 
     return output.astype('float32')
+
 
 # nms算法
 def nms(dets, thresh=0.45):
@@ -55,12 +59,13 @@ def nms(dets, thresh=0.45):
 
         # 因为ovr中的索引不包括order[0]所以要向后移动一位
         order = order[inds + 1]
-    
+
     output = []
     for i in keep:
         output.append(dets[i].tolist())
 
     return output
+
 
 # 人脸检测
 def detection(session, img, input_width, input_height, thresh):
@@ -102,7 +107,7 @@ def detection(session, img, input_width, input_height, thresh):
                 # 检测框归一化后中心点
                 box_cx = (w + x_offset) / feature_map_width
                 box_cy = (h + y_offset) / feature_map_height
-                
+
                 # cx,cy,w,h => x1, y1, x2, y2
                 x1, y1 = box_cx - 0.5 * box_width, box_cy - 0.5 * box_height
                 x2, y2 = box_cx + 0.5 * box_width, box_cy + 0.5 * box_height
@@ -111,6 +116,7 @@ def detection(session, img, input_width, input_height, thresh):
                 pred.append([x1, y1, x2, y2, score, cls_index])
 
     return nms(np.array(pred))
+
 
 if __name__ == '__main__':
     # 读取图片
@@ -124,25 +130,23 @@ if __name__ == '__main__':
     bboxes = detection(session, img, input_width, input_height, 0.65)
     end = time.perf_counter()
     time = (end - start) * 1000.
-    print("forward time:%fms"%time)
+    print("forward time:%fms" % time)
 
     # 加载label names
     names = []
     with open("coco.names", 'r') as f:
-	    for line in f.readlines():
-	        names.append(line.strip())
-            
+        for line in f.readlines():
+            names.append(line.strip())
+
     print("=================box info===================")
     for b in bboxes:
         print(b)
         obj_score, cls_index = b[4], int(b[5])
         x1, y1, x2, y2 = int(b[0]), int(b[1]), int(b[2]), int(b[3])
 
-        #绘制检测框
-        cv2.rectangle(img, (x1,y1), (x2, y2), (255, 255, 0), 2)
+        # 绘制检测框
+        cv2.rectangle(img, (x1, y1), (x2, y2), (255, 255, 0), 2)
         cv2.putText(img, '%.2f' % obj_score, (x1, y1 - 5), 0, 0.7, (0, 255, 0), 2)
         cv2.putText(img, names[cls_index], (x1, y1 - 25), 0, 0.7, (0, 255, 0), 2)
-	
+
     cv2.imwrite("result.jpg", img)
-
-

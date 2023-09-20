@@ -6,6 +6,7 @@ from utils.tool import *
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
+
 class CocoDetectionEvaluator():
     def __init__(self, names, device):
         self.device = device
@@ -13,7 +14,7 @@ class CocoDetectionEvaluator():
         with open(names, 'r') as f:
             for line in f.readlines():
                 self.classes.append(line.strip())
-    
+
     def coco_evaluate(self, gts, preds):
         # Create Ground Truth
         coco_gt = COCO()
@@ -26,10 +27,10 @@ class CocoDetectionEvaluator():
                 k += 1
                 coco_gt.dataset["images"].append({"id": i})
                 coco_gt.dataset["annotations"].append({"image_id": i, "category_id": gt[j, 0],
-                                                    "bbox": np.hstack([gt[j, 1:3], gt[j, 3:5] - gt[j, 1:3]]),
-                                                    "area": np.prod(gt[j, 3:5] - gt[j, 1:3]),
-                                                    "id": k, "iscrowd": 0})
-                
+                                                       "bbox": np.hstack([gt[j, 1:3], gt[j, 3:5] - gt[j, 1:3]]),
+                                                       "area": np.prod(gt[j, 3:5] - gt[j, 1:3]),
+                                                       "id": k, "iscrowd": 0})
+
         coco_gt.dataset["categories"] = [{"id": i, "supercategory": c, "name": c} for i, c in enumerate(self.classes)]
         coco_gt.createIndex()
 
@@ -44,10 +45,11 @@ class CocoDetectionEvaluator():
                 k += 1
                 coco_pred.dataset["images"].append({"id": i})
                 coco_pred.dataset["annotations"].append({"image_id": i, "category_id": np.int(pred[j, 0]),
-                                                        "score": pred[j, 1], "bbox": np.hstack([pred[j, 2:4], pred[j, 4:6] - pred[j, 2:4]]),
-                                                        "area": np.prod(pred[j, 4:6] - pred[j, 2:4]),
-                                                        "id": k})
-                
+                                                         "score": pred[j, 1],
+                                                         "bbox": np.hstack([pred[j, 2:4], pred[j, 4:6] - pred[j, 2:4]]),
+                                                         "area": np.prod(pred[j, 4:6] - pred[j, 2:4]),
+                                                         "id": k})
+
         coco_pred.dataset["categories"] = [{"id": i, "supercategory": c, "name": c} for i, c in enumerate(self.classes)]
         coco_pred.createIndex()
 
@@ -94,7 +96,7 @@ class CocoDetectionEvaluator():
                         x2, y2 = bcx + 0.5 * bw, bcy + 0.5 * bh
                         tbboxes.append([category, x1, y1, x2, y2])
                 gts.append(np.array(tbboxes))
-                
+
         mAP05 = self.coco_evaluate(gts, pts)
 
         return mAP05

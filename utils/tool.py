@@ -2,6 +2,7 @@ import yaml
 import torch
 import torchvision
 
+
 # 解析yaml配置文件
 class LoadYaml:
     def __init__(self, path):
@@ -16,13 +17,14 @@ class LoadYaml:
         self.batch_size = data["TRAIN"]["BATCH_SIZE"]
         self.milestones = data["TRAIN"]["MILESTIONES"]
         self.end_epoch = data["TRAIN"]["END_EPOCH"]
-        
+
         self.input_width = data["MODEL"]["INPUT_WIDTH"]
         self.input_height = data["MODEL"]["INPUT_HEIGHT"]
-        
+
         self.category_num = data["MODEL"]["NC"]
-        
+
         print("Load yaml sucess...")
+
 
 class EMA():
     def __init__(self, model, decay):
@@ -57,18 +59,23 @@ class EMA():
                 param.data = self.backup[name]
         self.backup = {}
 
+
 # 后处理(归一化后的坐标)
 def handle_preds(preds, device, conf_thresh=0.25, nms_thresh=0.45):
-    total_bboxes, output_bboxes  = [], []
+    total_bboxes, output_bboxes = [], []
     # 将特征图转换为检测框的坐标
     N, C, H, W = preds.shape
     bboxes = torch.zeros((N, H, W, 6))
+    # NCHW -> NHWC
     pred = preds.permute(0, 2, 3, 1)
     # 前背景分类分支
+    # [N, H, W]
     pobj = pred[:, :, :, 0].unsqueeze(dim=-1)
     # 检测框回归分支
+    # [N, H, W, 4]
     preg = pred[:, :, :, 1:5]
     # 目标类别分类分支
+    # [N, H, W, category_num]
     pcls = pred[:, :, :, 5:]
 
     # 检测框置信度
@@ -77,7 +84,7 @@ def handle_preds(preds, device, conf_thresh=0.25, nms_thresh=0.45):
 
     # 检测框的坐标
     gy, gx = torch.meshgrid([torch.arange(H), torch.arange(W)])
-    bw, bh = preg[..., 2].sigmoid(), preg[..., 3].sigmoid() 
+    bw, bh = preg[..., 2].sigmoid(), preg[..., 3].sigmoid()
     bcx = (preg[..., 0].tanh() + gx.to(device)) / W
     bcy = (preg[..., 1].tanh() + gy.to(device)) / H
 
@@ -87,9 +94,9 @@ def handle_preds(preds, device, conf_thresh=0.25, nms_thresh=0.45):
 
     bboxes[..., 0], bboxes[..., 1] = x1, y1
     bboxes[..., 2], bboxes[..., 3] = x2, y2
-    bboxes = bboxes.reshape(N, H*W, 6)
+    bboxes = bboxes.reshape(N, H * W, 6)
     total_bboxes.append(bboxes)
-        
+
     batch_bboxes = torch.cat(total_bboxes, 1)
 
     # 对检测框进行NMS处理

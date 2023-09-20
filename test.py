@@ -35,56 +35,58 @@ if __name__ == '__main__':
             device = torch.device("cuda")
         else:
             print("run on cpu...")
-            device = torch.device("cpu")     
+            device = torch.device("cpu")
 
-    # 解析yaml配置文件
-    cfg = LoadYaml(opt.yaml)    
-    print(cfg) 
+            # 解析yaml配置文件
+    cfg = LoadYaml(opt.yaml)
+    print(cfg)
 
     # 模型加载
-    print("load weight from:%s"%opt.weight)
+    print("load weight from:%s" % opt.weight)
     model = Detector(cfg.category_num, True).to(device)
     model.load_state_dict(torch.load(opt.weight, map_location=device))
-    #sets the module in eval node
+    # sets the module in eval node
     model.eval()
-    
+
     # 数据预处理
     ori_img = cv2.imread(opt.img)
-    res_img = cv2.resize(ori_img, (cfg.input_width, cfg.input_height), interpolation = cv2.INTER_LINEAR) 
+    res_img = cv2.resize(ori_img, (cfg.input_width, cfg.input_height), interpolation=cv2.INTER_LINEAR)
     img = res_img.reshape(1, cfg.input_height, cfg.input_width, 3)
     img = torch.from_numpy(img.transpose(0, 3, 1, 2))
     img = img.to(device).float() / 255.0
 
     # 导出onnx模型
     if opt.onnx:
-        torch.onnx.export(model,                     # model being run
-                          img,                       # model input (or a tuple for multiple inputs)
-                          "./FastestDet.onnx",       # where to save the model (can be a file or file-like object)
-                          export_params=True,        # store the trained parameter weights inside the model file
-                          opset_version=11,          # the ONNX version to export the model to
+        torch.onnx.export(model,  # model being run
+                          img,  # model input (or a tuple for multiple inputs)
+                          "./FastestDet.onnx",  # where to save the model (can be a file or file-like object)
+                          export_params=True,  # store the trained parameter weights inside the model file
+                          opset_version=11,  # the ONNX version to export the model to
                           do_constant_folding=True)  # whether to execute constant folding for optimization
         # onnx-sim
         onnx_model = onnx.load("./FastestDet.onnx")  # load onnx model
         model_simp, check = simplify(onnx_model)
         assert check, "Simplified ONNX model could not be validated"
         print("onnx sim sucess...")
-        onnx.save(model_simp, "./FastestDet.onnx")                  
+        onnx.save(model_simp, "./FastestDet.onnx")
 
-    # 导出torchscript模型
+        # 导出torchscript模型
     if opt.torchscript:
         import copy
+
         model_cpu = copy.deepcopy(model).cpu()
         x = torch.rand(1, 3, cfg.input_height, cfg.input_width)
         mod = torch.jit.trace(model_cpu, x)
         mod.save("./FastestDet.pt")
-        print("to convert torchscript to pnnx/ncnn: ./pnnx FastestDet.pt inputshape=[1,3,%d,%d]" % (cfg.input_height, cfg.input_height))
+        print("to convert torchscript to pnnx/ncnn: ./pnnx FastestDet.pt inputshape=[1,3,%d,%d]" % (
+        cfg.input_height, cfg.input_height))
 
     # 模型推理
     start = time.perf_counter()
     preds = model(img)
     end = time.perf_counter()
     time = (end - start) * 1000.
-    print("forward time:%fms"%time)
+    print("forward time:%fms" % time)
 
     # 特征图后处理
     output = handle_preds(preds, device, opt.thresh)
@@ -92,9 +94,9 @@ if __name__ == '__main__':
     # 加载label names
     LABEL_NAMES = []
     with open(cfg.names, 'r') as f:
-	    for line in f.readlines():
-	        LABEL_NAMES.append(line.strip())
-    
+        for line in f.readlines():
+            LABEL_NAMES.append(line.strip())
+
     H, W, _ = ori_img.shape
     scale_h, scale_w = H / cfg.input_height, W / cfg.input_width
 
@@ -102,7 +104,7 @@ if __name__ == '__main__':
     for box in output[0]:
         print(box)
         box = box.tolist()
-       
+
         obj_score = box[4]
         category = LABEL_NAMES[int(box[5])]
 
@@ -110,7 +112,7 @@ if __name__ == '__main__':
         x2, y2 = int(box[2] * W), int(box[3] * H)
 
         cv2.rectangle(ori_img, (x1, y1), (x2, y2), (255, 255, 0), 2)
-        cv2.putText(ori_img, '%.2f' % obj_score, (x1, y1 - 5), 0, 0.7, (0, 255, 0), 2)	
+        cv2.putText(ori_img, '%.2f' % obj_score, (x1, y1 - 5), 0, 0.7, (0, 255, 0), 2)
         cv2.putText(ori_img, category, (x1, y1 - 25), 0, 0.7, (0, 255, 0), 2)
 
     cv2.imwrite("result.png", ori_img)

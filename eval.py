@@ -23,11 +23,11 @@ if __name__ == '__main__':
     assert os.path.exists(opt.weight), "请指定正确的权重文件路径"
 
     # 解析yaml配置文件
-    cfg = LoadYaml(opt.yaml)    
-    print(cfg) 
+    cfg = LoadYaml(opt.yaml)
+    print(cfg)
 
     # 加载模型权重
-    print("load weight from:%s"%opt.weight)
+    print("load weight from:%s" % opt.weight)
     model = Detector(cfg.category_num, True).to(device)
     model.load_state_dict(torch.load(opt.weight))
     model.eval()
@@ -41,7 +41,7 @@ if __name__ == '__main__':
     # 数据集加载
     val_dataset = TensorDataset(cfg.val_txt, cfg.input_width, cfg.input_height, False)
 
-    #验证集
+    # 验证集
     val_dataloader = torch.utils.data.DataLoader(val_dataset,
                                                  batch_size=cfg.batch_size,
                                                  shuffle=False,
