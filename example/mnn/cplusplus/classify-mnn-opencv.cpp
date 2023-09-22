@@ -19,7 +19,7 @@
  * OUTPUT FORMAT:
  */
 
-#include <stdio.h>
+#include <cstdio>
 #include <MNN/ImageProcess.hpp>
 #include <MNN/Interpreter.hpp>
 #define MNN_OPEN_TIME_TRACE
@@ -30,33 +30,33 @@
 #include <sstream>
 #include <vector>
 #include <MNN/AutoTime.hpp>
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-#include "stb_image_write.h"
+#include <opencv2/opencv.hpp>
 
 using namespace MNN;
 using namespace MNN::CV;
 
-int main(int argc, const char* argv[]) {
-	if (argc < 3) {
-		MNN_PRINT("Usage: ./pictureRecognition.out model.mnn input0.jpg input1.jpg input2.jpg ... \n");
+int main(int argc, const char *argv[]) {
+	if (argc != 3) {
+		MNN_PRINT("Usage: ./pictureRecognition.out model.mnn input0.jpg\n");
 		return 0;
 	}
+	// Create Interpreter and Session
 	std::shared_ptr<Interpreter> net(Interpreter::createFromFile(argv[1]), Interpreter::destroy);
 	net->setCacheFile(".cachefile");
 	net->setSessionMode(Interpreter::Session_Backend_Auto);
 	net->setSessionHint(Interpreter::MAX_TUNING_NUMBER, 5);
 	ScheduleConfig config;
-	config.type  = MNN_FORWARD_AUTO;
+	config.type = MNN_FORWARD_AUTO;
 	// BackendConfig bnconfig;
 	// bnconfig.precision = BackendConfig::Precision_Low;
 	// config.backendConfig = &bnconfig;
 	auto session = net->createSession(config);
 
 	auto input = net->getSessionInput(session, NULL);
+	input->printShape();
 	auto shape = input->shape();
 	// Set Batch Size
-	shape[0]   = argc - 2;
+	shape[0] = argc - 2;
 	net->resizeTensor(input, shape);
 	net->resizeSession(session);
 	float memoryUsage = 0.0f;
@@ -65,77 +65,65 @@ int main(int argc, const char* argv[]) {
 	net->getSessionInfo(session, MNN::Interpreter::FLOPS, &flops);
 	int backendType[2];
 	net->getSessionInfo(session, MNN::Interpreter::BACKENDS, backendType);
-	MNN_PRINT("Session Info: memory use %f MB, flops is %f M, backendType is %d, batch size = %d\n", memoryUsage, flops, backendType[0], argc - 2);
+	MNN_PRINT("Session Info: memory use %f MB, flops is %f M, backendType is %d, batch size = %d\n",
+			  memoryUsage,
+			  flops,
+			  backendType[0],
+			  argc - 2);
 	auto output = net->getSessionOutput(session, NULL);
 	if (nullptr == output || output->elementSize() == 0) {
 		MNN_ERROR("Resize error, the model can't run batch: %d\n", shape[0]);
 		return 0;
 	}
+
+	// Set Data
 	std::shared_ptr<Tensor> inputUser(new Tensor(input, Tensor::TENSORFLOW));
 	inputUser->printShape();
-	auto bpp          = inputUser->channel();
-	auto size_h       = inputUser->height();
-	auto size_w       = inputUser->width();
+	auto bpp = inputUser->channel();
+	auto size_h = inputUser->height();
+	auto size_w = inputUser->width();
 	MNN_PRINT("input: w:%d , h:%d, bpp: %d\n", size_w, size_h, bpp);
-	for (int batch = 0; batch < shape[0]; ++batch){
-		auto inputPatch = argv[batch + 2];
-		int width, height, channel;
-		auto inputImage = stbi_load(inputPatch, &width, &height, &channel, 4);
-		if (nullptr == inputImage) {
-			MNN_ERROR("Can't open %s\n", inputPatch);
-			return 0;
-		}
-		MNN_PRINT("origin size: %d, %d\n", width, height);
-		Matrix trans;
-		// Set transform, from dst scale to src, the ways below are both ok
-#ifdef USE_MAP_POINT
-		float srcPoints[] = {
-            0.0f, 0.0f,
-            0.0f, (float)(height-1),
-            (float)(width-1), 0.0f,
-            (float)(width-1), (float)(height-1),
-        };
-        float dstPoints[] = {
-            0.0f, 0.0f,
-            0.0f, (float)(size_h-1),
-            (float)(size_w-1), 0.0f,
-            (float)(size_w-1), (float)(size_h-1),
-        };
-        trans.setPolyToPoly((Point*)dstPoints, (Point*)srcPoints, 4);
-#else
-		trans.setScale((float)(width-1) / (size_w-1), (float)(height-1) / (size_h-1));
-#endif
-		ImageProcess::Config config;
-		config.filterType = BILINEAR;
-		float mean[3]     = {103.94f, 116.78f, 123.68f};
-		float normals[3] = {0.017f, 0.017f, 0.017f};
-		// float mean[3]     = {127.5f, 127.5f, 127.5f};
-		// float normals[3] = {0.00785f, 0.00785f, 0.00785f};
-		::memcpy(config.mean, mean, sizeof(mean));
-		::memcpy(config.normal, normals, sizeof(normals));
-		config.sourceFormat = RGBA;
-//		config.destFormat   = BGR;
-		config.destFormat   = MNN::CV::RGB;
 
-		std::shared_ptr<ImageProcess> pretreat(ImageProcess::create(config), ImageProcess::destroy);
-		pretreat->setMatrix(trans);
-		pretreat->convert((uint8_t*)inputImage, width, height, 0, inputUser->host<uint8_t>() + inputUser->stride(0) * batch * inputUser->getType().bytes(), size_w, size_h, bpp, 0, inputUser->getType());
-		stbi_image_free(inputImage);
+	auto inputPatch = argv[2];
+	cv::Mat img = cv::imread(inputPatch, cv::IMREAD_COLOR);
+	if (img.empty()) {
+		MNN_ERROR("Can't open %s\n", inputPatch);
+		return 0;
 	}
+
+	cv::resize(img, img, cv::Size(size_w, size_h));
+	cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
+
+//	float mean[3] = {103.94f, 116.78f, 123.68f};
+//	float normals[3] = {0.017f, 0.017f, 0.017f};
+	img.convertTo(img, CV_32F);
+	cv::Mat blob = img - cv::Scalar(103.94f, 116.78f, 123.68f);
+	blob *= 0.017f;
+
+	int width = blob.cols;
+	int height = blob.rows;
+	MNN_PRINT("origin size: %d, %d\n", width, height);
+
+	int input_size = inputUser->elementSize();
+	assert(1 * 3 * 224 * 224 == input_size);
+	::memcpy(inputUser->host<uchar>(), blob.data, input_size * 4);
+
+	printf("inputUser->elementSize() = %d\n", inputUser->elementSize());
 	input->copyFromHostTensor(inputUser.get());
-	if (false) {
-		std::ofstream outputOs("input_0.txt");
-		std::shared_ptr<Tensor> inputUserPrint(new Tensor(input, Tensor::CAFFE));
-		input->copyToHostTensor(inputUserPrint.get());
-		auto size = inputUserPrint->elementSize();
-		for (int i=0; i<size; ++i) {
-			outputOs << inputUserPrint->host<float>()[i] << std::endl;
-		}
+	for (int i = 0; i < 50; i++) {
+		std::cout << input->host<float>()[i] << " ";
 	}
+	std::cout << std::endl;
+	for (int i = input_size - 50; i < input_size; i++) {
+		std::cout << input->host<float>()[i] << " ";
+	}
+	std::cout << std::endl;
 
+	// Infer
 	net->runSession(session);
 	auto dimType = output->getDimensionType();
 	if (output->getType().code != halide_type_float) {
+		std::cout << "dimType = Tensor::TENSORFLOW" << std::endl;
 		dimType = Tensor::TENSORFLOW;
 	}
 	std::shared_ptr<Tensor> outputUser(new Tensor(output, dimType));
@@ -147,6 +135,7 @@ int main(int argc, const char* argv[]) {
 		auto size = outputUser->stride(0);
 		std::vector<std::pair<int, float>> tempValues(size);
 		if (type.code == halide_type_float) {
+			printf("type.code == halide_type_float\n");
 			auto values = outputUser->host<float>() + batch * outputUser->stride(0);
 			for (int i = 0; i < size; ++i) {
 				tempValues[i] = std::make_pair(i, values[i]);

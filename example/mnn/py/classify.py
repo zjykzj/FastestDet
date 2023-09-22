@@ -31,6 +31,7 @@ def data_preprocess(image):
     image = image - (103.94, 116.78, 123.68)
     image = image * (0.017, 0.017, 0.017)
     # preprocess it
+    # HWC -> CHW
     image = image.transpose((2, 0, 1))
     # change numpy data type as np.float32 to match tensor's format
     image = image.astype(np.float32)
